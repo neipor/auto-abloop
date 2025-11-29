@@ -1,11 +1,7 @@
 [build]
-target = "web/index.html"
+target = "index.html"
 dist = "dist"
 public_url = "/"
-
-# Explicitly point to the Cargo.toml in the root directory
-# This resolves issues where trunk looks in web/ by default.
-cargo_manifest = "Cargo.toml"
 
 [tools]
 rust_version = "stable"
