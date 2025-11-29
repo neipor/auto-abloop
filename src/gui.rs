@@ -455,7 +455,9 @@ impl eframe::App for MyApp {
             }
         });
     }
+}
 
+impl MyApp {
     fn render_player_ui(&mut self, ui: &mut egui::Ui, data: &audio::AudioData, points: Option<&LoopPoints>) {
         ui.horizontal(|ui| {
             let cover_size = egui::vec2(200.0, 200.0);
