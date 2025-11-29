@@ -455,4 +455,142 @@ impl eframe::App for MyApp {
             }
         });
     }
+
+    fn render_player_ui(&mut self, ui: &mut egui::Ui, data: &audio::AudioData, points: Option<&LoopPoints>) {
+        ui.horizontal(|ui| {
+            let cover_size = egui::vec2(200.0, 200.0);
+            if let Some(texture) = &self.cover_texture {
+                ui.add(egui::Image::new(texture).max_size(cover_size));
+            } else {
+                let (rect, _resp) = ui.allocate_exact_size(cover_size, egui::Sense::hover());
+                ui.painter().rect_filled(rect, 8.0, egui::Color32::from_gray(40));
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, "No Cover", egui::FontId::proportional(20.0), egui::Color32::GRAY);
+            }
+
+            ui.vertical(|ui| {
+                ui.label(egui::RichText::new(data.title.as_deref().unwrap_or(&i18n::t("unknown_title")))
+                    .size(28.0).strong().color(egui::Color32::WHITE));
+                ui.label(egui::RichText::new(data.artist.as_deref().unwrap_or(&i18n::t("unknown_artist")))
+                    .size(18.0).color(egui::Color32::LIGHT_GRAY));
+                ui.label(egui::RichText::new(data.album.as_deref().unwrap_or(&i18n::t("unknown_album")))
+                    .size(14.0).color(egui::Color32::GRAY));
+                
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Fmt:").strong());
+                    ui.label(format!("{}Hz / {}ch", data.sample_rate, data.channels));
+                });
+                
+                ui.add_space(10.0);
+                if let Some(p) = points {
+                    let confidence_pct = (p.confidence * 100.0).clamp(0.0, 100.0);
+                    let mut color = if confidence_pct > 80.0 { egui::Color32::GREEN } else { egui::Color32::YELLOW };
+                    let mut text = i18n::t("loop_found");
+                    
+                    if confidence_pct > 60.0 && confidence_pct > 85.0 {
+                         text = i18n::t("fade_out_loop");
+                         color = egui::Color32::GREEN;
+                    }
+                    
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.colored_label(color, format!("✔ {}", text));
+                            ui.label(format!("{}: {:.0}%", i18n::t("confidence"), confidence_pct));
+                        });
+                        
+                        let duration_fmt = |samples: usize| -> String {
+                            let s = samples as f32 / data.sample_rate as f32 / data.channels as f32;
+                            format!("{:.2}s", s)
+                        };
+                        
+                        ui.label(format!("{}  ➡  {}", duration_fmt(p.start_sample), duration_fmt(p.end_sample)));
+                    });
+                } else {
+                    ui.colored_label(egui::Color32::YELLOW, i18n::t("no_loop"));
+                }
+                
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.label(i18n::t("loop_count"));
+                    ui.add(egui::DragValue::new(&mut self.export_loops).range(1..=99));
+                    if ui.button(i18n::t("export")).clicked() {
+                        self.export_file(); // Path handling moved inside
+                    }
+                });
+            });
+        });
+
+        ui.add_space(20.0);
+        
+        if let Some(waveform) = &self.waveform_cache {
+            let (rect, _resp) = ui.allocate_at_least(egui::vec2(ui.available_width(), 100.0), egui::Sense::hover());
+            ui.painter().rect_filled(rect, 4.0, egui::Color32::from_black_alpha(100));
+            
+            let points_count = waveform.len() / 2;
+            let w_step = rect.width() / points_count as f32;
+            let center_y = rect.center().y;
+            let height_scale = rect.height() / 2.0;
+            let wave_color = egui::Color32::from_rgb(100, 150, 255);
+            
+            for i in 0..points_count {
+                let min = waveform[i*2];
+                let max = waveform[i*2+1];
+                let x = rect.min.x + i as f32 * w_step;
+                 ui.painter().line_segment(
+                     [egui::pos2(x, center_y + min * height_scale), 
+                      egui::pos2(x, center_y + max * height_scale)], 
+                     egui::Stroke::new(1.0, wave_color)
+                 );
+            }
+            
+             if let Some(p) = points {
+                 let total_samples = data.samples.len();
+                 let start_x = rect.min.x + (p.start_sample as f32 / total_samples as f32) * rect.width();
+                 let end_x = rect.min.x + (p.end_sample as f32 / total_samples as f32) * rect.width();
+                 
+                 let loop_color = egui::Color32::GREEN;
+                 ui.painter().line_segment([egui::pos2(start_x, rect.min.y), egui::pos2(start_x, rect.max.y)], egui::Stroke::new(2.0, loop_color));
+                 ui.painter().line_segment([egui::pos2(end_x, rect.min.y), egui::pos2(end_x, rect.max.y)], egui::Stroke::new(2.0, egui::Color32::RED));
+                 
+                 if end_x > start_x {
+                     ui.painter().rect_filled(
+                         egui::Rect::from_min_max(egui::pos2(start_x, rect.min.y), egui::pos2(end_x, rect.max.y)), 
+                         0.0, 
+                         egui::Color32::from_rgba_unmultiplied(0, 255, 0, 20)
+                     );
+                 }
+             }
+        }
+        
+        ui.add_space(20.0);
+        
+        ui.horizontal(|ui| {
+            let btn_size = egui::vec2(40.0, 40.0);
+            if ui.add(egui::Button::new(egui::RichText::new("▶").size(20.0)).min_size(btn_size)).clicked() {
+                self.start_playback();
+            }
+             if ui.add(egui::Button::new(egui::RichText::new("⏹").size(20.0)).min_size(btn_size)).clicked() {
+                self.stop_playback();
+            }
+            
+            ui.add_space(20.0);
+            ui.vertical(|ui| {
+                ui.label(i18n::t("volume"));
+                if ui.add(egui::Slider::new(&mut self.volume, 0.0..=1.5).show_value(false)).changed() {
+                    self.update_volume();
+                }
+            });
+            
+            ui.add_space(20.0);
+             ui.vertical(|ui| {
+                ui.label(i18n::t("play")); 
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut self.infinite_loop, i18n::t("infinite"));
+                    if !self.infinite_loop {
+                        ui.add(egui::DragValue::new(&mut self.loop_count).range(1..=99));
+                    }
+                });
+            });
+        });
+    }
 }
