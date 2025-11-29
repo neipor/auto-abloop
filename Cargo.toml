@@ -1,0 +1,61 @@
+[package]
+name = "auto-abloop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+symphonia = { version = "0.5", features = ["all"] }
+rodio = { version = "0.20", default-features = false, features = ["symphonia-all"] }
+eframe = "0.31"
+egui = "0.31"
+hound = "3.5"
+realfft = "3.3"
+log = "0.4"
+env_logger = "0.11"
+crossbeam-channel = "0.5"
+rfd = "0.15"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+lazy_static = "1.4"
+
+# Native only dependencies
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# (No specific native-only deps yet, mostly shared, but we might separate logic)
+
+# Web dependencies
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "HtmlCanvasElement", 
+    "File", 
+    "FileList", 
+    "FileReader", 
+    "HtmlInputElement", 
+    "Blob", 
+    "Url",
+    "console"
+] }
+console_error_panic_hook = "0.1"
+tracing-wasm = "0.2"
+# eframe needs web support
+eframe = "0.31"
+# rodio needs wasm-bindgen support implied by cpal
+rodio = { version = "0.20", default-features = false, features = ["symphonia-all", "wasm-bindgen"] }
+getrandom = { version = "0.2", features = ["js"] }
+
+[lib]
+name = "auto_abloop"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "auto-abloop"
+path = "src/main.rs"
+
+[profile.release]
+strip = true
+opt-level = 3
+lto = true
+codegen-units = 1
