@@ -58,7 +58,8 @@ fn get_zh(key: &str) -> &'static str {
         "exporting" => "正在导出...",
         "export_success" => "导出成功！",
         "export_fail" => "导出失败：",
-        "save_file" => "保存文件",
+        "min_fade_out_duration" => "最小淡出时长",
+        "fade_out_buffer" => "淡出缓冲", // New
         _ => "", // Return empty or fallback
     }
 }
@@ -89,6 +90,7 @@ fn get_en(key: &str) -> &'static str {
         "export_success" => "Export Successful!",
         "export_fail" => "Export Failed: ",
         "save_file" => "Save File",
+        "fade_out_buffer" => "Fade-Out Buffer", // New
         _ => "",
     }
 }

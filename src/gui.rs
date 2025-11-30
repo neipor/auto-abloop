@@ -627,6 +627,9 @@ impl eframe::App for MyApp {
                             ui.label(format!("{}: {}ms", i18n::t("min_fade_out_duration"), self.analysis_settings.min_fade_out_duration_ms));
                             if ui.add(egui::Slider::new(&mut self.analysis_settings.min_fade_out_duration_ms, 100..=5000)).changed() { re_analyze_triggered_by_ui = true; }
 
+                            ui.label(format!("{}: {}ms", i18n::t("fade_out_buffer"), self.analysis_settings.fade_out_buffer_ms));
+                            if ui.add(egui::Slider::new(&mut self.analysis_settings.fade_out_buffer_ms, 0..=500)).changed() { re_analyze_triggered_by_ui = true; }
+
                             ui.add_space(20.0);
                             if ui.button(i18n::t("re_analyze")).clicked() { re_analyze_triggered_by_ui = true; }
                         });

@@ -288,7 +288,8 @@ pub fn run_analysis(audio: &AudioData, settings: &AnalysisSettings) -> AnalysisR
                     // If the detected loop's end overlaps with the fade-out,
                     // cut the loop's end just before the fade-out starts.
                     if lp.end_sample > fade_out_start_multichannel {
-                        lp.end_sample = fade_out_start_multichannel;
+                        let buffer_samples = (settings.fade_out_buffer_ms as f32 / 1000.0 * audio.sample_rate as f32 * audio.channels as f32) as usize;
+                        lp.end_sample = fade_out_start_multichannel.saturating_sub(buffer_samples).max(lp.start_sample + 1); // Ensure loop is at least 1 sample long
                         // It's reasonable to assume the confidence for the 'loop' itself
                         // might still be high, even if its end point is adjusted due to fade-out.
                         // We could re-evaluate confidence, but for now, we'll keep the original.
