@@ -36,6 +36,29 @@ pub fn configure_visuals(ctx: &egui::Context) {
     visuals.window_corner_radius = egui::CornerRadius::same(8);
     visuals.widgets.noninteractive.bg_fill = egui::Color32::from_gray(20);
     ctx.set_visuals(visuals);
+
+    let mut fonts = egui::FontDefinitions::default();
+
+    fonts.font_data.insert(
+        "DroidSansFallback".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "fonts/DroidSansFallback.ttf"
+        ))),
+    );
+
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        .insert(0, "DroidSansFallback".to_owned());
+
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .push("DroidSansFallback".to_owned());
+
+    ctx.set_fonts(fonts);
 }
 
 #[derive(Clone)]

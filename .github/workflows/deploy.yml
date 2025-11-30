@@ -1,0 +1,50 @@
+name: Deploy Web
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Install Trunk
+        run: |
+          cargo install trunk --version 0.21.14
+
+      - name: Build web assets
+        run: |
+          trunk build --release
+
+      - name: Archive production artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-{{github.sha}}
+          path: dist
+
+      - name: Deploy to GitHub Pages (neipor/auto-abloop-build)
+        uses: peaceiris/actions-gh-pages@v3
+        if: ${{ github.ref == 'refs/heads/main' }} # Only deploy from main branch
+        with:
+          external_repository: neipor/auto-abloop-build
+          personal_token: ${{ secrets.DEPLOY_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: dist
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: "Deploying web assets from auto-abloop workflow [skip ci]"
+
+      # Cloudflare Pages deployment will go here

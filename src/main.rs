@@ -100,5 +100,11 @@ fn main() {
             )
             .await
             .expect("failed to start eframe");
+
+        // Hide the loading spinner once eframe has started
+        if let Some(spinner_element) = document.get_element_by_id("loading_spinner") {
+            let html_element = spinner_element.unchecked_into::<web_sys::HtmlElement>();
+            html_element.style().set_property("display", "none").expect("Failed to hide loading spinner");
+        }
     });
 }
