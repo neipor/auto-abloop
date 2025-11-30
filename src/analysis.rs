@@ -1,7 +1,7 @@
 use crate::audio::AudioData;
 use crate::{LoopPoints, FadeOutInfo, AnalysisSettings, DetectionMode, FadeOutMode, AnalysisResult};
 
-pub fn detect_loop(audio: &AudioData) -> Option<LoopPoints> {
+pub fn detect_loop(audio: &AudioData, fade_out_hint: Option<&FadeOutInfo>) -> Option<LoopPoints> {
     let channels = audio.channels as usize;
     
     // 1. Mix to mono
@@ -13,32 +13,41 @@ pub fn detect_loop(audio: &AudioData) -> Option<LoopPoints> {
     // 2. Find effective end (ignore trailing silence)
     // Scan backwards for significant energy
     let silence_threshold = 0.0005; // Very quiet
-    let mut end_idx = mono.len();
+    let mut actual_end_of_content_mono = mono.len(); // Renamed end_idx for clarity
     for (i, &sample) in mono.iter().enumerate().rev() {
         if sample.abs() > silence_threshold {
-            end_idx = i + 1;
+            actual_end_of_content_mono = i + 1;
             break;
         }
     }
     
-    if end_idx < 44100 * 5 { // Too short (< 5s)
+    // Adjust the effective end based on fade_out_hint
+    let mut loop_search_end_mono = actual_end_of_content_mono;
+    if let Some(fo_info) = fade_out_hint {
+        // Convert multi-channel fade-out start to mono index
+        let fo_start_mono = fo_info.start_sample / channels;
+        // The loop search should not go into the fade-out region
+        loop_search_end_mono = loop_search_end_mono.min(fo_start_mono);
+    }
+
+    if loop_search_end_mono < (audio.sample_rate as f32 * 5.0) as usize { // Too short (< 5s) after adjustment
         return None;
     }
 
-    // 3. Prepare Query (End of track)
+    // 3. Prepare Query (End of track for loop search)
     // Use a 10-second window, or smaller if file is short
     let search_window_sec = 10.0;
     let window_size = (audio.sample_rate as f32 * search_window_sec) as usize;
     
-    if end_idx < window_size * 2 {
+    if loop_search_end_mono < window_size * 2 {
         // Try smaller window for short files?
         return None; 
     }
 
     // Shift query back slightly to avoid catching the very tail of a fade which might be noise
-    // Let's take the block ending at end_idx.
-    let query_start_idx = end_idx - window_size;
-    let query_raw = &mono[query_start_idx..end_idx];
+    // Let's take the block ending at loop_search_end_mono.
+    let query_start_idx = loop_search_end_mono - window_size;
+    let query_raw = &mono[query_start_idx..loop_search_end_mono];
 
     // 4. Coarse Search (Downsample)
     // Target ~200Hz for coarse search. 
@@ -99,7 +108,7 @@ pub fn detect_loop(audio: &AudioData) -> Option<LoopPoints> {
     }
     
     let loop_start_sample = best_pos * channels;
-    let loop_end_sample = query_start_idx * channels;
+    let loop_end_sample = loop_search_end_mono * channels; // Updated to use loop_search_end_mono
 
     Some(LoopPoints {
         start_sample: loop_start_sample,
@@ -277,7 +286,7 @@ pub fn run_analysis(audio: &AudioData, settings: &AnalysisSettings) -> AnalysisR
             // Loop detection is skipped in this mode.
         }
         DetectionMode::LoopOnly | DetectionMode::Auto => {
-            let mut loop_points = detect_loop(audio);
+            let mut loop_points = detect_loop(audio, result.fade_out_info.as_ref());
 
             // If a fade-out was detected AND we have loop points,
             // adjust the loop_end_sample to not include the fade-out region.
