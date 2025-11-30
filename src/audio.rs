@@ -8,7 +8,7 @@ use symphonia::core::meta::{MetadataOptions, StandardTagKey};
 use symphonia::core::probe::Hint;
 
 use std::fs::File;
-use std::io::{Cursor, Read, Seek};
+use std::io::Cursor;
 use std::path::Path;
 use image::DynamicImage;
 

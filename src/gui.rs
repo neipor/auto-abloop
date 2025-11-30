@@ -5,6 +5,11 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use crate::{audio, analysis, player, export, i18n, LoopPoints};
 use rodio::{OutputStream, Sink};
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use web_sys::{HtmlElement, Url};
+
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
 
@@ -99,7 +104,7 @@ pub struct MyApp {
 }
 
 impl MyApp {
-    pub fn new(initial_file: Option<PathBuf>, ctx: egui::Context) -> Self {
+    pub fn new(_initial_file: Option<PathBuf>, ctx: egui::Context) -> Self {
         let (sender, receiver) = unbounded();
         
         let mut app = Self {
@@ -247,11 +252,24 @@ impl MyApp {
              
              #[cfg(target_arch = "wasm32")]
              {
+                 *self.state.lock().unwrap() = AppState::Exporting;
                  let sender = self.msg_sender.clone();
                  let ctx = self.ctx.clone();
                  wasm_bindgen_futures::spawn_local(async move {
-                     // Stub
-                     sender.send(AppMessage::Error("Export not fully ported to Web yet".into())).ok();
+                     let file_name = format!("{}_loop_exported.wav", data.title.as_deref().unwrap_or("audio"));
+                     let res = export::export_loop_web((*data).clone(), points, loops);
+                     match res {
+                         Ok(wav_data) => {
+                             if let Err(e) = download_bytes_as_file(file_name, wav_data).await {
+                                 sender.send(AppMessage::ExportFinished(Err(e))).ok();
+                             } else {
+                                 sender.send(AppMessage::ExportFinished(Ok(()))).ok();
+                             }
+                         }
+                         Err(e) => {
+                             sender.send(AppMessage::ExportFinished(Err(e))).ok();
+                         }
+                     }
                      ctx.request_repaint();
                  });
              }
@@ -609,4 +627,41 @@ impl eframe::App for MyApp {
             }
         });
     }
+}
+#[cfg(target_arch = "wasm32")]
+async fn download_bytes_as_file(filename: String, bytes: Vec<u8>) -> anyhow::Result<()> {
+    let window = web_sys::window().ok_or_else(|| anyhow::anyhow!("No window"))?;
+    let document = window.document().ok_or_else(|| anyhow::anyhow!("No document"))?;
+
+    let array_buffer = js_sys::Uint8Array::from(bytes.as_slice());
+    let blob_parts = js_sys::Array::new_with_length(1);
+    blob_parts.set(0, array_buffer.into());
+
+    let blob_property_bag = web_sys::BlobPropertyBag::new();
+    blob_property_bag.set_type("audio/wav"); // Use set_type()
+
+    let blob = web_sys::Blob::new_with_buffer_source_sequence_and_options(
+        &blob_parts,
+        &blob_property_bag,
+    ).map_err(|e| anyhow::anyhow!("Failed to create Blob: {:?}", e))?; // Handle JsValue error
+
+    let url = Url::create_object_url_with_blob(&blob)
+        .map_err(|e| anyhow::anyhow!("Failed to create object URL: {:?}", e))?; // Handle JsValue error
+
+    let a = document.create_element("a")
+        .map_err(|e| anyhow::anyhow!("Failed to create <a> element: {:?}", e))?; // Handle JsValue error
+    let html_element: HtmlElement = a.dyn_into()
+        .map_err(|e| anyhow::anyhow!("Failed to cast element to HtmlElement: {:?}", e))?; // Handle Element error
+    html_element.set_attribute("download", &filename)
+        .map_err(|e| anyhow::anyhow!("Failed to set download attribute: {:?}", e))?; // Handle JsValue error
+    html_element.set_attribute("href", &url)
+        .map_err(|e| anyhow::anyhow!("Failed to set href attribute: {:?}", e))?; // Handle JsValue error
+
+    html_element.click();
+
+    // Revoke the object URL to free up memory
+    Url::revoke_object_url(&url)
+        .map_err(|e| anyhow::anyhow!("Failed to revoke object URL: {:?}", e))?; // Handle JsValue error
+
+    Ok(())
 }
