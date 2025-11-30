@@ -9,7 +9,7 @@ pub struct LoopingSource {
     cursor: usize,
     loop_count: u32,
     max_loops: Option<u32>, // None means infinite
-    fade_out_info: Option<FadeOutInfo>, // New: Fade out information
+    _fade_out_info: Option<FadeOutInfo>, // New: Fade out information
 }
 
 impl LoopingSource {
@@ -20,7 +20,7 @@ impl LoopingSource {
             cursor: 0,
             loop_count: 0,
             max_loops,
-            fade_out_info, // Initialize new field
+            _fade_out_info: fade_out_info, // Initialize new field
         }
     }
 }

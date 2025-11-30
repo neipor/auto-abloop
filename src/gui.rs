@@ -81,6 +81,7 @@ enum AppState {
 enum AppMessage {
     Loaded(String, Arc<audio::AudioData>), 
     Analyzed(AnalysisResult),
+    Log(String), // New: Log message from analysis
     Error(String),
     ExportFinished(anyhow::Result<()>),
 }
@@ -102,6 +103,8 @@ pub struct MyApp {
     waveform_cache: Option<Vec<f32>>,
     export_loops: u32,
     analysis_settings: AnalysisSettings, // New: Analysis settings
+    analysis_logs: Vec<String>, // New: Analysis logs for display
+    show_logs: bool, // New: Whether to show logs panel
 }
 
 impl MyApp {
@@ -123,6 +126,8 @@ impl MyApp {
             waveform_cache: None,
             export_loops: 5,
             analysis_settings: AnalysisSettings::default(), // New: Initialize
+            analysis_logs: Vec::new(), // New: Initialize logs
+            show_logs: false, // New: Default to hidden
         };
 
         if let Ok((stream, stream_handle)) = OutputStream::try_default() {
@@ -145,6 +150,8 @@ impl MyApp {
     // New function to trigger analysis
     fn trigger_analysis(&mut self, audio_data: Arc<audio::AudioData>) {
         *self.state.lock().unwrap() = AppState::Analyzing(audio_data.clone(), self.analysis_settings.clone());
+        self.analysis_logs.clear(); // Clear previous logs
+        self.show_logs = true; // Show logs panel during analysis
         self.ctx.request_repaint();
 
         let sender = self.msg_sender.clone();
@@ -152,8 +159,11 @@ impl MyApp {
         let settings = self.analysis_settings.clone(); // Capture current settings
         
         thread::spawn(move || {
-            let result = analysis::run_analysis(&audio_data, &settings);
-            sender.send(AppMessage::Analyzed(result)).ok();
+            let result = analysis::run_analysis_with_progress(&audio_data, &settings, |log_msg| {
+                // Send log message to UI thread
+                let _ = sender.send(AppMessage::Log(log_msg.to_string()));
+            });
+            let _ = sender.send(AppMessage::Analyzed(result));
             ctx.request_repaint();
         });
     }
@@ -177,8 +187,10 @@ impl MyApp {
                     sender.send(AppMessage::Loaded(name, arc_data.clone())).ok();
                     ctx.request_repaint();
                     
-                    // Run analysis with current settings
-                    let result = analysis::run_analysis(&arc_data, &analysis_settings);
+                    // Run analysis with current settings and progress logging
+                    let result = analysis::run_analysis_with_progress(&arc_data, &analysis_settings, |log_msg| {
+                        let _ = sender.send(AppMessage::Log(log_msg.to_string()));
+                    });
                     sender.send(AppMessage::Analyzed(result)).ok();
                     ctx.request_repaint();
                 }
@@ -527,6 +539,13 @@ impl eframe::App for MyApp {
                          _ => {}
                      }
                 }
+                AppMessage::Log(log_msg) => {
+                    self.analysis_logs.push(log_msg);
+                    // Keep only the last 20 log messages to prevent UI lag
+                    if self.analysis_logs.len() > 20 {
+                        self.analysis_logs.remove(0);
+                    }
+                }
                 AppMessage::Error(e) => {
                     *state = AppState::Error(e);
                 }
@@ -588,14 +607,31 @@ impl eframe::App for MyApp {
                     });
                 }
                 AppState::Analyzing(data, _settings) => { // Capture settings as well
-                     ui.centered_and_justified(|ui| {
-                        ui.vertical_centered(|ui| {
-                            ui.spinner();
-                            ui.label(i18n::t("detecting"));
-                            ui.small(format!("{} ({}Hz)", 
-                                data.title.as_deref().unwrap_or("Unknown"), 
-                                data.sample_rate));
+                    ui.vertical(|ui| {
+                        ui.centered_and_justified(|ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.spinner();
+                                ui.label(i18n::t("detecting"));
+                                ui.small(format!("{} ({}Hz)", 
+                                    data.title.as_deref().unwrap_or("Unknown"), 
+                                    data.sample_rate));
+                            });
                         });
+                        
+                        // Show analysis logs
+                        if !self.analysis_logs.is_empty() {
+                            ui.add_space(20.0);
+                            ui.heading("分析进度");
+                            ui.separator();
+                            
+                            egui::ScrollArea::vertical()
+                                .max_height(200.0)
+                                .show(ui, |ui| {
+                                    for log in &self.analysis_logs {
+                                        ui.label(egui::RichText::new(log).small());
+                                    }
+                                });
+                        }
                     });
                 }
                 AppState::Ready(data, analysis_result) => {
@@ -672,7 +708,9 @@ impl eframe::App for MyApp {
                                      let arc_data = Arc::new(audio_data);
                                      sender.send(AppMessage::Loaded(name, arc_data.clone())).ok();
                                      ctx.request_repaint();
-                                     let result = analysis::run_analysis(&arc_data, &analysis_settings); // Pass settings
+                                     let result = analysis::run_analysis_with_progress(&arc_data, &analysis_settings, |log_msg| {
+                                         let _ = sender.send(AppMessage::Log(log_msg.to_string()));
+                                     });
                                      sender.send(AppMessage::Analyzed(result)).ok();
                                      ctx.request_repaint();
                                 }

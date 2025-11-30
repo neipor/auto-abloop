@@ -3,7 +3,7 @@ use auto_abloop::audio;
 use std::path::Path;
 
 fn main() -> Result<()> {
-    let filename = "大塚正子,Hungary Phillharmony Orchestra - 好機到来.flac";
+    let filename = "坂本英城 - 覇気雄心.flac";
     let path = Path::new(filename);
     
     if !path.exists() {
