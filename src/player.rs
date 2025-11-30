@@ -1,7 +1,7 @@
 use std::time::Duration;
 use rodio::Source;
 use crate::audio::AudioData;
-use crate::LoopPoints;
+use crate::{LoopPoints, FadeOutInfo}; // Add FadeOutInfo here
 
 pub struct LoopingSource {
     data: AudioData,
@@ -9,16 +9,18 @@ pub struct LoopingSource {
     cursor: usize,
     loop_count: u32,
     max_loops: Option<u32>, // None means infinite
+    fade_out_info: Option<FadeOutInfo>, // New: Fade out information
 }
 
 impl LoopingSource {
-    pub fn new(data: AudioData, loop_points: LoopPoints, max_loops: Option<u32>) -> Self {
+    pub fn new(data: AudioData, loop_points: LoopPoints, max_loops: Option<u32>, fade_out_info: Option<FadeOutInfo>) -> Self {
         Self {
             data,
             loop_points,
             cursor: 0,
             loop_count: 0,
             max_loops,
+            fade_out_info, // Initialize new field
         }
     }
 }

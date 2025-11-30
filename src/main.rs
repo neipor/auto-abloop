@@ -1,4 +1,6 @@
 use auto_abloop::gui;
+use auto_abloop::{audio, analysis, player, export, LoopPoints, AnalysisSettings};
+use rodio::{OutputStream, Sink};
 
 // --- Native (CLI/Desktop) Entry Point ---
 #[cfg(not(target_arch = "wasm32"))]
@@ -35,7 +37,11 @@ fn main() -> anyhow::Result<()> {
     println!("Audio loaded. Sample rate: {}, Channels: {}", audio_data.sample_rate, audio_data.channels);
 
     println!("Detecting loop points...");
-    let loop_points = analysis::detect_loop(&audio_data);
+    let analysis_settings = AnalysisSettings::default(); // Use default settings for CLI
+    let analysis_result = analysis::run_analysis(&audio_data, &analysis_settings);
+
+    let loop_points = analysis_result.loop_points.clone();
+    let fade_out_info = analysis_result.fade_out_info.clone();
 
     let points = match loop_points {
         Some(p) => {
@@ -51,17 +57,23 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
+    if let Some(fo_info) = &fade_out_info {
+        println!("Fade out detected!");
+        println!("Fade out start sample: {}", fo_info.start_sample);
+        println!("Fade out duration: {}", fo_info.duration_samples);
+    }
+
+
     if let Some(output_path) = cli.output {
         let loop_count = cli.loops.unwrap_or(5);
         println!("Exporting to {:?} with {} loops...", output_path, loop_count);
-        export::export_loop(&output_path, audio_data, points, loop_count)?;
-        println!("Export complete.");
+        export::export_loop(&output_path, audio_data, points, loop_count, fade_out_info)?; // Pass fade_out_info
     } else {
         println!("Playing... (Ctrl+C to stop)");
         let (_stream, stream_handle) = OutputStream::try_default()?;
         let sink = Sink::try_new(&stream_handle)?;
         let max_loops = cli.loops; 
-        let source = player::LoopingSource::new(audio_data.clone(), points, max_loops);
+        let source = player::LoopingSource::new(audio_data.clone(), points, max_loops, fade_out_info); // Pass fade_out_info
         sink.append(source);
         sink.sleep_until_end();
     }
